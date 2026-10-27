@@ -9,6 +9,7 @@ class TenantAPI {
     this.reconnectTimer = null;
     this.pollInterval = null;
     this.clockOffset = 0;
+    this.clientIp = null;
   }
 
   onStateUpdate(callback) {
@@ -28,7 +29,27 @@ class TenantAPI {
     if (data.serverTime) {
       this.clockOffset = data.serverTime - Date.now();
     }
+    if (data.clientIp) {
+      this.clientIp = data.clientIp;
+    }
     this.listeners.forEach(cb => cb(data));
+  }
+
+  getClientIp() {
+    return this.clientIp || '127.0.0.1';
+  }
+
+  normalizeIp(ip) {
+    if (!ip) return '127.0.0.1';
+    let s = String(ip).trim();
+    if (s.startsWith('::ffff:')) s = s.substring(7);
+    if (s === '::1' || s === 'localhost') s = '127.0.0.1';
+    return s;
+  }
+
+  isMyIp(ip) {
+    if (!ip) return true; // Legacy items without recorded IP are allowed
+    return this.normalizeIp(ip) === this.normalizeIp(this.clientIp || '127.0.0.1');
   }
 
   now() {
@@ -143,6 +164,7 @@ class TenantAPI {
       RELEASE: { url: '/api/release', method: 'POST' },
       EXTEND: { url: '/api/extend', method: 'POST' },
       RESERVE: { url: '/api/reserve', method: 'POST' },
+      UPDATE_RESERVATION: { url: '/api/reserve/update', method: 'POST' },
       RESET_ALL: { url: '/api/reset', method: 'POST' }
     };
 
@@ -177,6 +199,15 @@ class TenantAPI {
     return await res.json();
   }
 
+  async checkConflicts(spaceId, tenantIds, startTime, durationMinutes, ignoreReservationId = null) {
+    const res = await fetch('/api/check-conflicts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ spaceId, tenantIds, startTime, durationMinutes, ignoreReservationId })
+    });
+    return await res.json();
+  }
+
   // Update space branches
   async updateSpaceBranches(spaceId, branches, userName = '') {
     return this.dispatchAction('UPDATE_SPACE_BRANCHES', { spaceId, branches, userName });
@@ -192,6 +223,12 @@ class TenantAPI {
   async reserve(params) {
     // params: { spaceId, tenantIds, slotId, userName, startTime, durationMinutes, notes }
     return this.dispatchAction('RESERVE', params);
+  }
+
+  // Update existing reservation (Creator IP verified by server)
+  async updateReservation(params) {
+    // params: { slotId, reservationId, userName, startTime, durationMinutes, branches, notes }
+    return this.dispatchAction('UPDATE_RESERVATION', params);
   }
 
   // Release single tenant or all in space

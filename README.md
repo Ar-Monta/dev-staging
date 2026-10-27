@@ -66,6 +66,16 @@ The system enforces strict conflict validation to ensure no overlapping reservat
   - The submit button is automatically disabled to prevent accidental conflict submissions.
   - A live **Schedule / Existing Bookings** view displays all booked intervals for the selected space and tenants.
 
+### 🔒 IP-Based Reservation Ownership & Modification
+Users can only modify, edit, extend, or cancel reservations and occupancies created by their own IP address:
+- **Automatic IP Detection**: Detects user IP address via proxy headers (`x-forwarded-for`, `x-real-ip`) and socket connections on localhost, LAN, and Vercel edge networks.
+- **Header IP Indicator**: Top navigation displays your verified client IP badge (`🌐 IP: <address>`).
+- **Owner vs. Read-Only Badging**:
+  - Reservations created by your IP display a green `✨ Yours` badge with active **✏️ Edit** and **✕ Cancel** buttons.
+  - Reservations from other users display a locked `🔒 <IP>` badge with disabled actions.
+- **Edit Reservation Modal**: Click the pencil icon on any of your reservations to modify the user name, start time, duration, branches (frontend, backend, CRM), or notes on-the-fly with real-time pre-flight conflict validation.
+- **Server-Side Enforcement**: All mutation endpoints (`PUT /api/reserve/:slotId/:resId`, `POST /api/reserve/update`, `DELETE /api/reserve/...`, `POST /api/release`, `POST /api/extend`) enforce IP matching, returning `403 Forbidden` if an unauthorized user attempts to modify someone else's reservation or active occupancy.
+
 ---
 
 ## 🏃 Running the Application

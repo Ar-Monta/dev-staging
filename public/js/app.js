@@ -102,6 +102,11 @@ function handleStateUpdate(data) {
   if (data.tenants) state.tenants = data.tenants;
   if (data.slots) state.slots = data.slots;
   if (data.history) state.history = data.history;
+  if (data.clientIp) {
+    state.clientIp = data.clientIp;
+    const ipText = document.getElementById('user-ip-text');
+    if (ipText) ipText.textContent = `IP: ${data.clientIp}`;
+  }
 
   renderStats();
   renderGrid();
@@ -301,7 +306,10 @@ function renderTactileButton(slot, space) {
           ${nextReservation ? `
             <div class="reservation-mini-strip">
               <span>${ICONS.calendar} Next: ${escapeHtml(nextReservation.userName)} at ${formatTimeHM(nextReservation.startTime)}</span>
-              <span>${nextReservation.durationMinutes}m</span>
+              <div style="display: flex; align-items: center; gap: 0.35rem;">
+                ${window.apiClient.isMyIp(nextReservation.creatorIp) ? `<span class="res-owner-badge mine" style="font-size: 0.5625rem; padding: 1px 4px;">✨ You</span>` : ''}
+                <span>${nextReservation.durationMinutes}m</span>
+              </div>
             </div>
           ` : ''}
         </button>
@@ -316,6 +324,7 @@ function renderTactileButton(slot, space) {
     const progressPercent = Math.min(100, Math.max(0, 100 - (remainingMs / totalMs * 100)));
 
     const initial = occupant.userName ? occupant.userName.charAt(0).toUpperCase() : '?';
+    const isOccupantMine = window.apiClient.isMyIp(occupant.creatorIp);
 
     return `
       <div class="tactile-socket" data-slot-id="${slot.id}">
@@ -333,9 +342,10 @@ function renderTactileButton(slot, space) {
 
           <div class="occupied-details-box">
             <div class="occupant-branch-row">
-              <div class="occupant-info" title="Occupied by ${escapeHtml(occupant.userName)}">
+              <div class="occupant-info" title="Occupied by ${escapeHtml(occupant.userName)} ${occupant.creatorIp ? `(IP: ${escapeHtml(occupant.creatorIp)})` : ''}">
                 <div class="user-avatar-circle">${initial}</div>
                 <span class="user-name-text">${escapeHtml(occupant.userName)}</span>
+                ${isOccupantMine ? `<span class="res-owner-badge mine" style="font-size: 0.5625rem; padding: 1px 4px;">✨ You</span>` : ''}
               </div>
             </div>
 
@@ -369,7 +379,10 @@ function renderTactileButton(slot, space) {
             ${nextReservation ? `
               <div class="reservation-mini-strip" onclick="openDetailsModal('${slot.id}')" style="cursor: pointer;">
                 <span>${ICONS.calendar} Next: ${escapeHtml(nextReservation.userName)} at ${formatTimeHM(nextReservation.startTime)}</span>
-                <span>${nextReservation.durationMinutes}m</span>
+                <div style="display: flex; align-items: center; gap: 0.35rem;">
+                  ${window.apiClient.isMyIp(nextReservation.creatorIp) ? `<span class="res-owner-badge mine" style="font-size: 0.5625rem; padding: 1px 4px;">✨ You</span>` : ''}
+                  <span>${nextReservation.durationMinutes}m</span>
+                </div>
               </div>
             ` : ''}
           </div>
@@ -1062,17 +1075,41 @@ function renderUpcomingReservationsSection(slot) {
 
       ${reservations.length === 0 
         ? `<div style="font-size: 0.75rem; color: var(--text-dim); text-align: center; padding: 0.75rem; background: #0b0f19; border-radius: 8px;">No scheduled reservations. Available to reserve anytime.</div>`
-        : reservations.map(r => `
-            <div style="background: #0b0f19; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 0.65rem 0.85rem; display: flex; align-items: center; justify-content: space-between; font-size: 0.8125rem;">
-              <div>
-                <div style="font-weight: 600; color: #fff;">${escapeHtml(r.userName)}</div>
+        : reservations.map(r => {
+            const isMine = window.apiClient.isMyIp(r.creatorIp);
+            const branchText = r.branches ? [r.branches.frontend && `FE: ${r.branches.frontend}`, r.branches.backend && `BE: ${r.branches.backend}`, r.branches.crm && `CRM: ${r.branches.crm}`].filter(Boolean).join(' • ') : '';
+
+            return `
+            <div style="background: #0b0f19; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 0.65rem 0.85rem; display: flex; align-items: center; justify-content: space-between; font-size: 0.8125rem; gap: 0.5rem;">
+              <div style="flex: 1; min-width: 0;">
+                <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.2rem; flex-wrap: wrap;">
+                  <span style="font-weight: 600; color: #fff;">${escapeHtml(r.userName)}</span>
+                  ${isMine 
+                    ? `<span class="res-owner-badge mine">✨ Yours</span>` 
+                    : `<span class="res-owner-badge other" title="Created by IP ${escapeHtml(r.creatorIp || 'other')}">🔒 ${escapeHtml(r.creatorIp || 'Other User')}</span>`
+                  }
+                </div>
                 <div style="font-size: 0.6875rem; color: var(--text-muted);">${formatDateMD(r.startTime)} at ${formatTimeHM(r.startTime)} - ${formatTimeHM(r.endTime)} (${r.durationMinutes}m)</div>
+                ${branchText ? `<div style="font-size: 0.6875rem; color: #38bdf8; margin-top: 0.15rem; font-family: var(--font-mono);">${escapeHtml(branchText)}</div>` : ''}
               </div>
-              <button type="button" class="btn-icon" style="width: 28px; height: 28px; color: #f87171;" onclick="cancelReservation('${slot.id}', '${r.id}')" title="Cancel reservation">
-                ${ICONS.trash}
-              </button>
+
+              <div style="display: flex; align-items: center; gap: 0.35rem; flex-shrink: 0;">
+                ${isMine ? `
+                  <button type="button" class="btn-icon" style="width: 28px; height: 28px; color: #38bdf8;" onclick="openEditReservationModal('${slot.id}', '${r.id}')" title="Edit your reservation">
+                    ${ICONS.pencil}
+                  </button>
+                  <button type="button" class="btn-icon" style="width: 28px; height: 28px; color: #f87171;" onclick="cancelReservation('${slot.id}', '${r.id}')" title="Cancel your reservation">
+                    ${ICONS.trash}
+                  </button>
+                ` : `
+                  <button type="button" class="btn-icon disabled" style="width: 28px; height: 28px;" title="Reserved by IP ${escapeHtml(r.creatorIp || 'other')}. Only the creator can change this reservation.">
+                    🔒
+                  </button>
+                `}
+              </div>
             </div>
-          `).join('')
+          `;
+        }).join('')
       }
     </div>
   `;
@@ -1124,12 +1161,163 @@ async function extendFromModal(slotId, mins) {
 }
 
 async function cancelReservation(slotId, reservationId) {
+  const slot = state.slots[slotId];
+  const res = (slot?.reservations || []).find(r => r.id === reservationId);
+  if (res && res.creatorIp && !window.apiClient.isMyIp(res.creatorIp)) {
+    showToast(`You can only cancel your own reservation (Created by IP: ${res.creatorIp})`, 'error');
+    return;
+  }
+
   if (!confirm('Are you sure you want to cancel this reservation?')) return;
   try {
     await window.apiClient.cancelReservation(slotId, reservationId);
     showToast('Reservation cancelled', 'info');
   } catch (err) {
     showToast(err.message || 'Cancel failed', 'error');
+  }
+}
+
+// --- EDIT RESERVATION MODAL (USER'S OWN RESERVATION VIA IP) ---
+function openEditReservationModal(slotId, reservationId) {
+  const slot = state.slots[slotId];
+  if (!slot) return;
+  const res = (slot.reservations || []).find(r => r.id === reservationId);
+  if (!res) return;
+
+  // Check IP permission
+  if (res.creatorIp && !window.apiClient.isMyIp(res.creatorIp)) {
+    showToast(`You can only edit your own reservations (Created by IP: ${res.creatorIp})`, 'error');
+    return;
+  }
+
+  const slotIdInput = document.getElementById('edit-res-slot-id');
+  const resIdInput = document.getElementById('edit-res-id');
+  const ownerIpEl = document.getElementById('edit-res-owner-ip');
+  const titleEl = document.getElementById('edit-res-modal-title');
+  const subtitleEl = document.getElementById('edit-res-modal-subtitle');
+
+  if (slotIdInput) slotIdInput.value = slotId;
+  if (resIdInput) resIdInput.value = reservationId;
+  if (ownerIpEl) ownerIpEl.textContent = res.creatorIp || window.apiClient.getClientIp();
+  if (titleEl) titleEl.textContent = `Edit Reservation: ${slot.tenantName}`;
+  if (subtitleEl) subtitleEl.textContent = `Space: ${slot.spaceName} • Verified Owner IP: ${res.creatorIp || window.apiClient.getClientIp()}`;
+
+  const userEl = document.getElementById('edit-res-user');
+  if (userEl) userEl.value = res.userName || '';
+
+  const timeEl = document.getElementById('edit-res-time');
+  if (timeEl) {
+    const d = new Date(res.startTime);
+    timeEl.value = formatDateTimeLocal(d);
+  }
+
+  const durEl = document.getElementById('edit-res-duration');
+  if (durEl) {
+    durEl.value = String(res.durationMinutes || 30);
+  }
+
+  const branches = res.branches || {};
+  const feEl = document.getElementById('edit-res-branch-fe');
+  const beEl = document.getElementById('edit-res-branch-be');
+  const crmEl = document.getElementById('edit-res-branch-crm');
+  const notesEl = document.getElementById('edit-res-notes');
+
+  if (feEl) feEl.value = branches.frontend || '';
+  if (beEl) beEl.value = branches.backend || '';
+  if (crmEl) crmEl.value = branches.crm || '';
+  if (notesEl) notesEl.value = res.notes || '';
+
+  const banner = document.getElementById('edit-res-conflict-banner');
+  if (banner) banner.style.display = 'none';
+
+  const modal = document.getElementById('edit-reservation-modal');
+  if (modal) modal.classList.add('open');
+}
+
+function closeEditReservationModal() {
+  const modal = document.getElementById('edit-reservation-modal');
+  if (modal) modal.classList.remove('open');
+}
+
+async function handleEditReservationConflictCheck() {
+  const slotId = document.getElementById('edit-res-slot-id')?.value;
+  const resId = document.getElementById('edit-res-id')?.value;
+  const slot = state.slots[slotId];
+  if (!slot) return;
+
+  const timeVal = document.getElementById('edit-res-time')?.value;
+  const durVal = parseInt(document.getElementById('edit-res-duration')?.value, 10) || 30;
+  const submitBtn = document.getElementById('edit-res-submit-btn');
+  const banner = document.getElementById('edit-res-conflict-banner');
+  const msgEl = document.getElementById('edit-res-conflict-message');
+
+  if (!timeVal) return;
+  const startTimeMs = new Date(timeVal).getTime();
+  if (isNaN(startTimeMs) || startTimeMs < Date.now() - 60000) {
+    if (banner && msgEl) {
+      banner.style.display = 'block';
+      msgEl.textContent = 'Start time must be in the future';
+    }
+    if (submitBtn) submitBtn.disabled = true;
+    return;
+  }
+
+  try {
+    const check = await window.apiClient.checkConflicts(slot.spaceId, [slot.tenantId], new Date(startTimeMs).toISOString(), durVal, resId);
+    if (check.hasConflict) {
+      if (banner && msgEl) {
+        banner.style.display = 'block';
+        msgEl.textContent = check.conflicts.map(c => c.message).join(' | ');
+      }
+      if (submitBtn) submitBtn.disabled = true;
+    } else {
+      if (banner) banner.style.display = 'none';
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  } catch (err) {
+    console.error('Conflict check error:', err);
+  }
+}
+
+async function submitEditReservationForm() {
+  const slotId = document.getElementById('edit-res-slot-id')?.value;
+  const reservationId = document.getElementById('edit-res-id')?.value;
+  const userName = document.getElementById('edit-res-user')?.value?.trim();
+  const timeVal = document.getElementById('edit-res-time')?.value;
+  const durationMinutes = parseInt(document.getElementById('edit-res-duration')?.value, 10) || 30;
+  const frontend = document.getElementById('edit-res-branch-fe')?.value?.trim() || '';
+  const backend = document.getElementById('edit-res-branch-be')?.value?.trim() || '';
+  const crm = document.getElementById('edit-res-branch-crm')?.value?.trim() || '';
+  const notes = document.getElementById('edit-res-notes')?.value?.trim() || '';
+
+  if (!userName) {
+    showToast('Please enter your name', 'error');
+    return;
+  }
+  if (!timeVal) {
+    showToast('Please pick a start date and time', 'error');
+    return;
+  }
+
+  const startTime = new Date(timeVal).toISOString();
+
+  try {
+    await window.apiClient.updateReservation({
+      slotId,
+      reservationId,
+      userName,
+      startTime,
+      durationMinutes,
+      branches: { frontend, backend, crm },
+      notes
+    });
+
+    window.soundEngine.playSuccess();
+    showToast('Reservation updated successfully!', 'success');
+    closeEditReservationModal();
+  } catch (err) {
+    window.soundEngine.playError();
+    showToast(err.message || 'Failed to update reservation', 'error');
   }
 }
 

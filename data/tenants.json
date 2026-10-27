@@ -8,9 +8,9 @@
       "accentColor": "#06b6d4",
       "description": "Sekkat staging environment for pre-flight testing",
       "branches": {
-        "frontend": "feature/cart-checkout-v2",
+        "frontend": "feature/checkout-v2",
         "backend": "feature/order-api-v2",
-        "crm": "feature/crm-order-sync"
+        "crm": "feature/crm-sync-webhook"
       }
     },
     {
@@ -151,197 +151,81 @@
   },
   "history": [
     {
-      "id": "ddea62e7-6c50-4334-9c8d-9b7d146817af",
+      "id": "88393760-150d-49b3-b29e-daf1492ab8fc",
+      "action": "CANCEL_RESERVE",
+      "slotId": "",
+      "spaceName": "Stage Sekkat",
+      "tenantName": "ali",
+      "userName": "Alice Updated",
+      "branchName": "",
+      "branches": null,
+      "durationMinutes": 0,
+      "timestamp": 1793099043607,
+      "message": "Alice Updated (192.168.1.100) cancelled reservation for ali on Stage Sekkat"
+    },
+    {
+      "id": "c1942bc1-3f06-4b49-bbac-0a9cb18d3922",
       "action": "RELEASE",
       "slotId": "",
       "spaceName": "Stage Sekkat",
-      "tenantName": "All Tenants",
-      "userName": "ok",
+      "tenantName": "demo",
+      "userName": "Alice In Person",
       "branchName": "",
       "branches": null,
       "durationMinutes": 0,
-      "timestamp": 1792593515636,
-      "message": "ok released all tenants in Stage Sekkat"
+      "timestamp": 1793099043599,
+      "message": "Alice In Person (192.168.1.100) pushed out / freed demo on Stage Sekkat"
     },
     {
-      "id": "3b0a5b19-be13-4594-8e96-149afdc37eb1",
-      "action": "OCCUPY",
-      "slotId": "",
-      "spaceName": "Stage Sekkat",
-      "tenantName": "demo1",
-      "userName": "ok",
-      "branchName": "",
-      "branches": {
-        "frontend": "feature/cart-checkout-v2",
-        "backend": "feature/order-api-v2",
-        "crm": "feature/crm-order-sync"
-      },
-      "durationMinutes": 0,
-      "timestamp": 1792593480738,
-      "message": "Scheduled reservation auto-activated for ok on demo1 (Stage Sekkat)"
-    },
-    {
-      "id": "c2995818-929e-4d4d-b37e-34da4b39197a",
+      "id": "b42f0543-6cff-47fa-8690-2adf6d7a20ad",
       "action": "OCCUPY",
       "slotId": "",
       "spaceName": "Stage Sekkat",
       "tenantName": "demo",
-      "userName": "ok",
+      "userName": "Alice In Person",
       "branchName": "",
       "branches": {
-        "frontend": "feature/cart-checkout-v2",
+        "frontend": "feature/checkout-v2",
         "backend": "feature/order-api-v2",
-        "crm": "feature/crm-order-sync"
+        "crm": "feature/crm-sync-webhook"
       },
-      "durationMinutes": 0,
-      "timestamp": 1792593480738,
-      "message": "Scheduled reservation auto-activated for ok on demo (Stage Sekkat)"
+      "durationMinutes": 30,
+      "timestamp": 1793099043590,
+      "message": "Alice In Person (192.168.1.100) pushed in [demo] on Stage Sekkat for 30m"
     },
     {
-      "id": "509feb2e-369b-4ea9-aa4f-a78070bbcbb4",
-      "action": "OCCUPY",
+      "id": "ae4e8e3b-31ba-4199-b421-6f878b1f249e",
+      "action": "UPDATE_RESERVE",
       "slotId": "",
       "spaceName": "Stage Sekkat",
       "tenantName": "ali",
-      "userName": "ok",
+      "userName": "Alice Updated",
       "branchName": "",
       "branches": {
-        "frontend": "feature/cart-checkout-v2",
-        "backend": "feature/order-api-v2",
-        "crm": "feature/crm-order-sync"
+        "frontend": "feat/checkout",
+        "backend": "feat/cart",
+        "crm": ""
       },
-      "durationMinutes": 0,
-      "timestamp": 1792593480738,
-      "message": "Scheduled reservation auto-activated for ok on ali (Stage Sekkat)"
+      "durationMinutes": 90,
+      "timestamp": 1793099043585,
+      "message": "Alice Updated (192.168.1.100) updated reservation for ali on Stage Sekkat to 2:34:03 PM (90m)"
     },
     {
-      "id": "e9000029-4275-42b8-b3dc-8399bdcee8e9",
+      "id": "c3c7841c-3975-40cf-aa0a-49637bea5479",
       "action": "RESERVE",
       "slotId": "",
       "spaceName": "Stage Sekkat",
-      "tenantName": "ali, demo, demo1",
-      "userName": "ok",
-      "branchName": "",
-      "branches": {
-        "frontend": "feature/cart-checkout-v2",
-        "backend": "feature/order-api-v2",
-        "crm": "feature/crm-order-sync"
-      },
-      "durationMinutes": 15,
-      "timestamp": 1792593394809,
-      "message": "ok reserved [ali, demo, demo1] on Stage Sekkat for 6:08:00 PM (15m)"
-    },
-    {
-      "id": "6b0eae5b-0ab7-44b1-a48d-a9bbea89e408",
-      "action": "UPDATE_BRANCHES",
-      "slotId": "",
-      "spaceName": "Stage Sekkat",
-      "tenantName": "Whole Space",
-      "userName": "ok",
-      "branchName": "",
-      "branches": {
-        "frontend": "feature/cart-checkout-v2",
-        "backend": "feature/order-api-v2",
-        "crm": "feature/crm-order-sync"
-      },
-      "durationMinutes": 0,
-      "timestamp": 1792593341884,
-      "message": "ok updated branches for Stage Sekkat [FE: feature/cart-checkout-v2 • BE: feature/order-api-v2 • CRM: feature/crm-order-sync]"
-    },
-    {
-      "id": "ae789717-c914-4455-8e5a-764fe1993420",
-      "action": "EXPIRE",
-      "slotId": "",
-      "spaceName": "Beta",
-      "tenantName": "demo1",
-      "userName": "Marcus Vance",
-      "branchName": "",
-      "branches": null,
-      "durationMinutes": 0,
-      "timestamp": 1792590586740,
-      "message": "Time expired for Marcus Vance on demo1 (Beta)"
-    },
-    {
-      "id": "d745cce3-3fab-4247-bb2c-8646bbbda047",
-      "action": "EXPIRE",
-      "slotId": "",
-      "spaceName": "Stage Sekkat",
-      "tenantName": "demo",
-      "userName": "Sarah Chen",
-      "branchName": "",
-      "branches": null,
-      "durationMinutes": 0,
-      "timestamp": 1792587887731,
-      "message": "Time expired for Sarah Chen on demo (Stage Sekkat)"
-    },
-    {
-      "id": "9c8dd019-93ea-447f-b6f7-c28201d78cc4",
-      "action": "EXPIRE",
-      "slotId": "",
-      "spaceName": "Stage Sekkat",
       "tenantName": "ali",
-      "userName": "Sarah Chen",
-      "branchName": "",
-      "branches": null,
-      "durationMinutes": 0,
-      "timestamp": 1792587887731,
-      "message": "Time expired for Sarah Chen on ali (Stage Sekkat)"
-    },
-    {
-      "id": "4297da71-2a6a-4c72-81e8-a06b9aa14a38",
-      "action": "EXPIRE",
-      "slotId": "",
-      "spaceName": "Pre-prod Talarey",
-      "tenantName": "demo1",
-      "userName": "Alex Dev",
-      "branchName": "",
-      "branches": null,
-      "durationMinutes": 0,
-      "timestamp": 1792587586745,
-      "message": "Time expired for Alex Dev on demo1 (Pre-prod Talarey)"
-    },
-    {
-      "id": "35df5175-279c-48d5-827f-0295a7f201be",
-      "action": "EXPIRE",
-      "slotId": "",
-      "spaceName": "Pre-prod Talarey",
-      "tenantName": "demo",
-      "userName": "Alex Dev",
-      "branchName": "",
-      "branches": null,
-      "durationMinutes": 0,
-      "timestamp": 1792587586745,
-      "message": "Time expired for Alex Dev on demo (Pre-prod Talarey)"
-    },
-    {
-      "id": "8f74b33f-f622-4422-a0f1-8f5586830e23",
-      "action": "EXPIRE",
-      "slotId": "",
-      "spaceName": "Pre-prod Talarey",
-      "tenantName": "ali",
-      "userName": "Alex Dev",
-      "branchName": "",
-      "branches": null,
-      "durationMinutes": 0,
-      "timestamp": 1792587586745,
-      "message": "Time expired for Alex Dev on ali (Pre-prod Talarey)"
-    },
-    {
-      "id": "cb7eb8b6-5fd1-4ee7-9f91-822828ba6872",
-      "action": "OCCUPY",
-      "slotId": "",
-      "spaceName": "Beta",
-      "tenantName": "demo1",
-      "userName": "Marcus Vance",
+      "userName": "Alice",
       "branchName": "",
       "branches": {
-        "frontend": "",
-        "backend": "bugfix/auth-token-refresh",
-        "crm": "bugfix/salesforce-lead-dup"
+        "frontend": "feature/checkout-v2",
+        "backend": "feature/order-api-v2",
+        "crm": "feature/crm-sync-webhook"
       },
-      "durationMinutes": 0,
-      "timestamp": 1792586987708,
-      "message": "Scheduled reservation auto-activated for Marcus Vance on demo1 (Beta)"
+      "durationMinutes": 60,
+      "timestamp": 1793099043560,
+      "message": "Alice (192.168.1.100) reserved [ali] on Stage Sekkat for 2:34:03 PM (60m)"
     }
   ]
 }

@@ -38,6 +38,12 @@
           <span>CONNECTING...</span>
         </div>
 
+        <!-- User IP Ownership Pill -->
+        <div id="user-ip-badge" class="status-pill ip-pill" title="Your client IP address used for reservation ownership">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+          <span id="user-ip-text">IP: Detecting...</span>
+        </div>
+
         <!-- Sound FX Toggle Button -->
         <button type="button" id="sound-toggle-btn" class="btn-icon" title="Toggle mechanical sound effects">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
@@ -339,6 +345,103 @@
 
         <button type="button" class="btn-push-action" style="background: linear-gradient(180deg, #0284c7 0%, #0369a1 100%);" onclick="submitEditSpaceBranches()">
           SAVE SPACE BRANCHES
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       MODAL 4: EDIT RESERVATION (USER'S OWN RESERVATION VIA IP)
+       ========================================================= -->
+  <div id="edit-reservation-modal" class="modal-backdrop">
+    <div class="modal-window">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+          <div>
+            <h3 id="edit-res-modal-title" class="modal-title">Edit Reservation</h3>
+            <span id="edit-res-modal-subtitle" style="font-size: 0.75rem; color: var(--text-muted);">Modify your scheduled reservation details</span>
+          </div>
+        </div>
+        <button type="button" class="btn-icon" onclick="closeEditReservationModal()">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <input type="hidden" id="edit-res-slot-id">
+        <input type="hidden" id="edit-res-id">
+
+        <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 0.65rem 0.85rem; margin-bottom: 1rem; display: flex; align-items: center; justify-content: space-between; font-size: 0.8125rem;">
+          <span style="color: var(--text-muted);">Verified Owner IP:</span>
+          <span id="edit-res-owner-ip" style="font-family: var(--font-mono); font-weight: 700; color: #38bdf8;">127.0.0.1</span>
+        </div>
+
+        <!-- Name -->
+        <div class="form-group">
+          <label class="form-label" for="edit-res-user">
+            <span>Your Name</span>
+            <span style="font-size: 0.6875rem; color: var(--text-dim);">Required</span>
+          </label>
+          <input type="text" id="edit-res-user" class="form-input" placeholder="e.g. Alex Dev">
+        </div>
+
+        <!-- Start Date & Time -->
+        <div class="form-group">
+          <label class="form-label" for="edit-res-time">
+            <span>Scheduled Start Date & Time</span>
+            <span style="font-size: 0.6875rem; color: #38bdf8;">Future Time</span>
+          </label>
+          <input type="datetime-local" id="edit-res-time" class="form-input font-mono" oninput="handleEditReservationConflictCheck()">
+        </div>
+
+        <!-- Duration -->
+        <div class="form-group">
+          <label class="form-label" for="edit-res-duration">Duration</label>
+          <select id="edit-res-duration" class="form-input font-mono" onchange="handleEditReservationConflictCheck()">
+            <option value="15">15 minutes</option>
+            <option value="30">30 minutes</option>
+            <option value="45">45 minutes</option>
+            <option value="60">1 hour</option>
+            <option value="90">1.5 hours</option>
+            <option value="120">2 hours</option>
+            <option value="180">3 hours</option>
+            <option value="240">4 hours</option>
+          </select>
+        </div>
+
+        <!-- Optional Branches for this reservation -->
+        <div style="margin-top: 1rem;">
+          <div style="font-size: 0.8125rem; font-weight: 700; margin-bottom: 0.5rem; color: var(--text-main);">Branches for this Reservation (Optional)</div>
+
+          <div class="form-group">
+            <label class="form-label" for="edit-res-branch-fe" style="color: #38bdf8;">🌐 Frontend Branch</label>
+            <input type="text" id="edit-res-branch-fe" class="form-input font-mono" placeholder="e.g. feature/checkout-ui">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="edit-res-branch-be" style="color: #c084fc;">⚙️ Backend Branch</label>
+            <input type="text" id="edit-res-branch-be" class="form-input font-mono" placeholder="e.g. feature/orders-api">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="edit-res-branch-crm" style="color: #fbbf24;">💼 CRM Branch</label>
+            <input type="text" id="edit-res-branch-crm" class="form-input font-mono" placeholder="e.g. feature/crm-sync">
+          </div>
+        </div>
+
+        <!-- Notes -->
+        <div class="form-group">
+          <label class="form-label" for="edit-res-notes">Notes (Optional)</label>
+          <input type="text" id="edit-res-notes" class="form-input" placeholder="e.g. Performance testing">
+        </div>
+
+        <!-- Conflict Warning Banner -->
+        <div id="edit-res-conflict-banner" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 10px; padding: 0.75rem 1rem; color: #fca5a5; font-size: 0.8125rem; margin-bottom: 1rem;">
+          <div style="font-weight: 700; margin-bottom: 0.25rem;">⚠️ Time Conflict Detected</div>
+          <div id="edit-res-conflict-message"></div>
+        </div>
+
+        <button type="button" id="edit-res-submit-btn" class="btn-push-action" style="background: linear-gradient(180deg, #0284c7 0%, #0369a1 100%);" onclick="submitEditReservationForm()">
+          SAVE CHANGES
         </button>
       </div>
     </div>

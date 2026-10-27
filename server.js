@@ -16,13 +16,47 @@ const DATA_FILE = path.join(DATA_DIR, 'tenants.json');
 const SEED_DATA_FILE = path.join(__dirname, 'data', 'tenants.json');
 const ONE_DAY_MS = 24 * 60 * 60 * 1000; // 24-hour retention window (prune logs older than 1 day)
 
+// IP Normalization & Extraction Helpers
+export function normalizeIp(ip) {
+  if (!ip) return '127.0.0.1';
+  let clean = String(ip).trim();
+  if (clean.startsWith('::ffff:')) {
+    clean = clean.substring(7);
+  }
+  if (clean === '::1' || clean === 'localhost') {
+    clean = '127.0.0.1';
+  }
+  return clean;
+}
+
+export function getClientIp(req) {
+  if (!req) return '127.0.0.1';
+  let ip = '';
+  const forwarded = req.headers ? (req.headers['x-forwarded-for'] || req.headers['x-vercel-forwarded-for']) : null;
+  if (forwarded) {
+    ip = String(forwarded).split(',')[0].trim();
+  }
+  if (!ip && req.headers && req.headers['x-real-ip']) {
+    ip = String(req.headers['x-real-ip']).trim();
+  }
+  if (!ip) {
+    ip = req.ip || req.socket?.remoteAddress || req.connection?.remoteAddress || '127.0.0.1';
+  }
+  return normalizeIp(ip);
+}
+
+export function canModifyItem(creatorIp, requesterIp) {
+  if (!creatorIp) return true; // Legacy/demo entries without IP can be modified
+  return normalizeIp(creatorIp) === normalizeIp(requesterIp);
+}
+
 // Helper to check interval overlap between [startA, endA] and [startB, endB]
 export function hasIntervalOverlap(startA, endA, startB, endB) {
   return Math.max(startA, startB) < Math.min(endA, endB);
 }
 
 // Find any conflict for a proposed slot window [start, end]
-export function checkSlotConflict(slot, start, end) {
+export function checkSlotConflict(slot, start, end, ignoreReservationId = null) {
   const now = Date.now();
 
   // 1. Conflict with active occupant
@@ -44,6 +78,7 @@ export function checkSlotConflict(slot, start, end) {
   // 2. Conflict with existing scheduled reservations
   const reservations = slot.reservations || [];
   for (const r of reservations) {
+    if (ignoreReservationId && r.id === ignoreReservationId) continue;
     if (hasIntervalOverlap(start, end, r.startTime, r.endTime)) {
       const startStr = new Date(r.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const endStr = new Date(r.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -249,6 +284,7 @@ loadState();
 
 // Express app setup
 const app = express();
+app.set('trust proxy', true);
 app.use(express.json());
 
 // Normalization middleware for Vercel / serverless rewrites
@@ -257,7 +293,7 @@ app.use((req, res, next) => {
   try { processSlotTimers(); } catch (e) {}
 
   if (!req.url.startsWith('/api') && !req.url.startsWith('/css') && !req.url.startsWith('/js') && !req.url.startsWith('/sound') && !req.url.startsWith('/favicon') && req.url !== '/' && req.url !== '/index.html') {
-    const apiEndpoints = ['/state', '/space-branches', '/occupy', '/release', '/extend', '/reserve', '/check-conflicts', '/history', '/reset', '/seed-demo', '/health'];
+    const apiEndpoints = ['/state', '/space-branches', '/occupy', '/release', '/extend', '/reserve', '/check-conflicts', '/history', '/reset', '/seed-demo', '/health', '/me'];
     const matched = apiEndpoints.find(p => req.url === p || req.url.startsWith(p + '/') || req.url.startsWith(p + '?'));
     if (matched) {
       req.url = '/api' + req.url;
@@ -393,7 +429,8 @@ if (slotTimer && typeof slotTimer.unref === 'function') {
   slotTimer.unref();
 }
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+  ws.clientIp = getClientIp(req);
   ws.send(JSON.stringify({
     type: 'INIT',
     payload: {
@@ -401,17 +438,18 @@ wss.on('connection', (ws) => {
       tenants: appState.tenants,
       slots: appState.slots,
       history: appState.history.slice(0, 50),
-      serverTime: Date.now()
+      serverTime: Date.now(),
+      clientIp: ws.clientIp
     }
   }));
 
   ws.on('message', (messageText) => {
     try {
       const data = JSON.parse(messageText);
-      handleClientAction(data.action, data.payload, ws);
+      handleClientAction(data.action, { ...data.payload, clientIp: ws.clientIp });
     } catch (err) {
       console.error('Error handling WebSocket message:', err);
-      ws.send(JSON.stringify({ type: 'ERROR', message: 'Invalid payload' }));
+      ws.send(JSON.stringify({ type: 'ERROR', message: err.message || 'Invalid payload' }));
     }
   });
 
@@ -456,6 +494,7 @@ function handleClientAction(action, payload) {
     // --- 2. OCCUPY CHOSEN TENANTS IN A SPACE ---
     case 'OCCUPY': {
       const { spaceId, tenantIds, slotId, userName, durationMinutes, notes } = payload;
+      const clientIp = payload.clientIp || '127.0.0.1';
 
       let targetSpaceId = spaceId;
       let targetTenants = tenantIds || [];
@@ -507,6 +546,7 @@ function handleClientAction(action, payload) {
         slot.currentOccupant = {
           id: crypto.randomUUID(),
           userName: user,
+          creatorIp: clientIp,
           branches: { ...space.branches },
           startedAt: now,
           endsAt,
@@ -518,9 +558,10 @@ function handleClientAction(action, payload) {
 
       addHistoryEntry('OCCUPY', space.displayName, occupiedSlots.map(s => s.tenantName).join(', '), {
         userName: user,
+        creatorIp: clientIp,
         durationMinutes: durMins,
         branches: space.branches,
-        message: `${user} pushed in [${occupiedSlots.map(s => s.tenantName).join(', ')}] on ${space.displayName} for ${durMins}m`
+        message: `${user} (${clientIp}) pushed in [${occupiedSlots.map(s => s.tenantName).join(', ')}] on ${space.displayName} for ${durMins}m`
       });
 
       saveState();
@@ -531,6 +572,7 @@ function handleClientAction(action, payload) {
     // --- 3. RESERVE CHOSEN TENANTS IN A SPACE FOR FUTURE TIME ---
     case 'RESERVE': {
       const { spaceId, tenantIds, slotId, userName, startTime, durationMinutes, notes } = payload;
+      const clientIp = payload.clientIp || '127.0.0.1';
 
       let targetSpaceId = spaceId;
       let targetTenants = tenantIds || [];
@@ -582,6 +624,7 @@ function handleClientAction(action, payload) {
         slot.reservations.push({
           id: crypto.randomUUID(),
           userName: user,
+          creatorIp: clientIp,
           branches: { ...space.branches },
           startTime: start,
           endTime: end,
@@ -595,9 +638,10 @@ function handleClientAction(action, payload) {
 
       addHistoryEntry('RESERVE', space.displayName, reservedSlots.map(s => s.tenantName).join(', '), {
         userName: user,
+        creatorIp: clientIp,
         durationMinutes: durMins,
         branches: space.branches,
-        message: `${user} reserved [${reservedSlots.map(s => s.tenantName).join(', ')}] on ${space.displayName} for ${new Date(start).toLocaleTimeString()} (${durMins}m)`
+        message: `${user} (${clientIp}) reserved [${reservedSlots.map(s => s.tenantName).join(', ')}] on ${space.displayName} for ${new Date(start).toLocaleTimeString()} (${durMins}m)`
       });
 
       saveState();
@@ -605,29 +649,93 @@ function handleClientAction(action, payload) {
       return { success: true, count: reservedSlots.length };
     }
 
-    // --- 4. RELEASE (SINGLE SLOT OR ALL IN SPACE) ---
+    // --- 4. UPDATE EXISTING RESERVATION (OWNER BY IP ONLY) ---
+    case 'UPDATE_RESERVATION': {
+      const { slotId, reservationId, userName, startTime, durationMinutes, branches, notes } = payload;
+      const clientIp = payload.clientIp || '127.0.0.1';
+
+      const slot = appState.slots[slotId];
+      if (!slot) throw new Error('Slot not found');
+
+      const reservation = (slot.reservations || []).find(r => r.id === reservationId);
+      if (!reservation) throw new Error('Reservation not found');
+
+      // IP verification: only creator can edit
+      if (reservation.creatorIp && !canModifyItem(reservation.creatorIp, clientIp)) {
+        throw new Error(`Permission denied: Only the creator (IP: ${reservation.creatorIp}) can edit this reservation. Your IP: ${clientIp}`);
+      }
+
+      const start = new Date(startTime).getTime();
+      if (isNaN(start) || start < now - 60000) {
+        throw new Error('Start time must be in the future');
+      }
+
+      const durMins = Math.max(5, parseInt(durationMinutes, 10) || 30);
+      const end = start + (durMins * 60 * 1000);
+
+      // Conflict validation excluding the reservation itself
+      const conflict = checkSlotConflict(slot, start, end, reservation.id);
+      if (conflict) {
+        throw new Error(conflict.message);
+      }
+
+      if (userName && userName.trim()) reservation.userName = userName.trim();
+      reservation.startTime = start;
+      reservation.endTime = end;
+      reservation.durationMinutes = durMins;
+      if (branches) {
+        reservation.branches = normalizeBranches(branches).branches;
+      }
+      if (notes !== undefined) {
+        reservation.notes = (notes || '').trim();
+      }
+      reservation.updatedAt = now;
+      slot.reservations.sort((a, b) => a.startTime - b.startTime);
+
+      addHistoryEntry('UPDATE_RESERVE', slot.spaceName, slot.tenantName, {
+        userName: reservation.userName,
+        creatorIp: clientIp,
+        durationMinutes: durMins,
+        branches: reservation.branches,
+        message: `${reservation.userName} (${clientIp}) updated reservation for ${slot.tenantName} on ${slot.spaceName} to ${new Date(start).toLocaleTimeString()} (${durMins}m)`
+      });
+
+      saveState();
+      broadcastStateUpdate();
+      return { success: true, slot, reservation };
+    }
+
+    // --- 5. RELEASE (SINGLE SLOT OR ALL IN SPACE) ---
     case 'RELEASE': {
       const { slotId, spaceId, releaseAll, userName } = payload;
+      const clientIp = payload.clientIp || '127.0.0.1';
 
       if (releaseAll && spaceId) {
         const space = appState.spaces.find(s => s.id === spaceId);
         const spaceSlots = Object.values(appState.slots).filter(s => s.spaceId === spaceId && s.status === 'occupied');
 
-        for (const slot of spaceSlots) {
+        // Only release slots that belong to this IP (or unassigned)
+        const slotsToRelease = spaceSlots.filter(s => canModifyItem(s.currentOccupant?.creatorIp, clientIp));
+        if (slotsToRelease.length === 0 && spaceSlots.length > 0) {
+          throw new Error(`Permission denied: Active tenants in this space were occupied by other IP addresses. Your IP: ${clientIp}`);
+        }
+
+        for (const slot of slotsToRelease) {
           slot.status = 'free';
           slot.currentOccupant = null;
         }
 
         processSlotTimers();
 
-        addHistoryEntry('RELEASE', space ? space.displayName : spaceId, 'All Tenants', {
+        addHistoryEntry('RELEASE', space ? space.displayName : spaceId, slotsToRelease.map(s => s.tenantName).join(', '), {
           userName: userName || 'User',
-          message: `${userName || 'User'} released all tenants in ${space ? space.displayName : spaceId}`
+          creatorIp: clientIp,
+          message: `${userName || 'User'} (${clientIp}) released ${slotsToRelease.length} tenants in ${space ? space.displayName : spaceId}`
         });
 
         saveState();
         broadcastStateUpdate();
-        return { success: true, releasedCount: spaceSlots.length };
+        return { success: true, releasedCount: slotsToRelease.length };
       } else {
         const slot = appState.slots[slotId];
         if (!slot) throw new Error('Slot not found');
@@ -636,12 +744,17 @@ function handleClientAction(action, payload) {
           return { success: true, message: 'Slot was already free' };
         }
 
+        if (slot.currentOccupant.creatorIp && !canModifyItem(slot.currentOccupant.creatorIp, clientIp)) {
+          throw new Error(`Permission denied: Only the occupant (IP: ${slot.currentOccupant.creatorIp}) can release this tenant. Your IP: ${clientIp}`);
+        }
+
         const releasedOccupant = slot.currentOccupant;
         const releasedBy = userName || releasedOccupant.userName;
 
         addHistoryEntry('RELEASE', slot.spaceName, slot.tenantName, {
           userName: releasedBy,
-          message: `${releasedBy} pushed out / freed ${slot.tenantName} on ${slot.spaceName}`
+          creatorIp: clientIp,
+          message: `${releasedBy} (${clientIp}) pushed out / freed ${slot.tenantName} on ${slot.spaceName}`
         });
 
         slot.status = 'free';
@@ -655,33 +768,43 @@ function handleClientAction(action, payload) {
       }
     }
 
-    // --- 5. EXTEND TIME ---
+    // --- 6. EXTEND TIME ---
     case 'EXTEND': {
       const { slotId, spaceId, extendAll, additionalMinutes } = payload;
+      const clientIp = payload.clientIp || '127.0.0.1';
       const addMins = Math.max(1, parseInt(additionalMinutes, 10) || 15);
       const addMs = addMins * 60 * 1000;
 
       if (extendAll && spaceId) {
         const spaceSlots = Object.values(appState.slots).filter(s => s.spaceId === spaceId && s.status === 'occupied');
-        for (const slot of spaceSlots) {
+        const slotsToExtend = spaceSlots.filter(s => canModifyItem(s.currentOccupant?.creatorIp, clientIp));
+        if (slotsToExtend.length === 0 && spaceSlots.length > 0) {
+          throw new Error(`Permission denied: Active tenants in this space were occupied by other IP addresses. Your IP: ${clientIp}`);
+        }
+        for (const slot of slotsToExtend) {
           if (slot.currentOccupant) {
             slot.currentOccupant.endsAt += addMs;
             slot.currentOccupant.totalDurationMs += addMs;
           }
         }
         const space = appState.spaces.find(s => s.id === spaceId);
-        addHistoryEntry('EXTEND', space ? space.displayName : spaceId, 'All Active', {
+        addHistoryEntry('EXTEND', space ? space.displayName : spaceId, slotsToExtend.map(s => s.tenantName).join(', '), {
           durationMinutes: addMins,
-          message: `Extended time by +${addMins}m for all active tenants in ${space ? space.displayName : spaceId}`
+          creatorIp: clientIp,
+          message: `Extended time by +${addMins}m for active tenants in ${space ? space.displayName : spaceId}`
         });
         saveState();
         broadcastStateUpdate();
-        return { success: true, count: spaceSlots.length };
+        return { success: true, count: slotsToExtend.length };
       } else {
         const slot = appState.slots[slotId];
         if (!slot) throw new Error('Slot not found');
         if (slot.status !== 'occupied' || !slot.currentOccupant) {
           throw new Error('Tenant is not occupied');
+        }
+
+        if (slot.currentOccupant.creatorIp && !canModifyItem(slot.currentOccupant.creatorIp, clientIp)) {
+          throw new Error(`Permission denied: Only the occupant (IP: ${slot.currentOccupant.creatorIp}) can extend time. Your IP: ${clientIp}`);
         }
 
         const newEndsAt = slot.currentOccupant.endsAt + addMs;
@@ -696,8 +819,9 @@ function handleClientAction(action, payload) {
 
         addHistoryEntry('EXTEND', slot.spaceName, slot.tenantName, {
           userName: slot.currentOccupant.userName,
+          creatorIp: clientIp,
           durationMinutes: addMins,
-          message: `${slot.currentOccupant.userName} extended time by +${addMins}m on ${slot.tenantName} (${slot.spaceName})`
+          message: `${slot.currentOccupant.userName} (${clientIp}) extended time by +${addMins}m on ${slot.tenantName} (${slot.spaceName})`
         });
 
         saveState();
@@ -708,16 +832,25 @@ function handleClientAction(action, payload) {
 
     case 'CANCEL_RESERVATION': {
       const { slotId, reservationId } = payload;
+      const clientIp = payload.clientIp || '127.0.0.1';
       const slot = appState.slots[slotId];
       if (!slot) throw new Error('Slot not found');
 
       const index = (slot.reservations || []).findIndex(r => r.id === reservationId);
       if (index === -1) throw new Error('Reservation not found');
 
+      const reservation = slot.reservations[index];
+
+      // IP verification: only creator can cancel
+      if (reservation.creatorIp && !canModifyItem(reservation.creatorIp, clientIp)) {
+        throw new Error(`Permission denied: Only the creator (IP: ${reservation.creatorIp}) can cancel this reservation. Your IP: ${clientIp}`);
+      }
+
       const [removed] = slot.reservations.splice(index, 1);
       addHistoryEntry('CANCEL_RESERVE', slot.spaceName, slot.tenantName, {
         userName: removed.userName,
-        message: `${removed.userName} cancelled reservation for ${slot.tenantName} on ${slot.spaceName}`
+        creatorIp: clientIp,
+        message: `${removed.userName} (${clientIp}) cancelled reservation for ${slot.tenantName} on ${slot.spaceName}`
       });
 
       saveState();
@@ -746,19 +879,25 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+app.get('/api/me', (req, res) => {
+  res.json({ ip: getClientIp(req) });
+});
+
 app.get('/api/state', (req, res) => {
   res.json({
     spaces: appState.spaces,
     tenants: appState.tenants,
     slots: appState.slots,
     history: appState.history.slice(0, 50),
-    serverTime: Date.now()
+    serverTime: Date.now(),
+    clientIp: getClientIp(req)
   });
 });
 
 app.post('/api/space-branches', (req, res) => {
   try {
-    const result = handleClientAction('UPDATE_SPACE_BRANCHES', req.body);
+    const clientIp = getClientIp(req);
+    const result = handleClientAction('UPDATE_SPACE_BRANCHES', { ...req.body, clientIp });
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -767,7 +906,8 @@ app.post('/api/space-branches', (req, res) => {
 
 app.post('/api/occupy', (req, res) => {
   try {
-    const result = handleClientAction('OCCUPY', req.body);
+    const clientIp = getClientIp(req);
+    const result = handleClientAction('OCCUPY', { ...req.body, clientIp });
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -776,34 +916,69 @@ app.post('/api/occupy', (req, res) => {
 
 app.post('/api/release', (req, res) => {
   try {
-    const result = handleClientAction('RELEASE', req.body);
+    const clientIp = getClientIp(req);
+    const result = handleClientAction('RELEASE', { ...req.body, clientIp });
     res.json(result);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    const isForbidden = err.message.includes('Permission denied');
+    res.status(isForbidden ? 403 : 400).json({ error: err.message });
   }
 });
 
 app.post('/api/extend', (req, res) => {
   try {
-    const result = handleClientAction('EXTEND', req.body);
+    const clientIp = getClientIp(req);
+    const result = handleClientAction('EXTEND', { ...req.body, clientIp });
     res.json(result);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    const isForbidden = err.message.includes('Permission denied');
+    res.status(isForbidden ? 403 : 400).json({ error: err.message });
   }
 });
 
 app.post('/api/reserve', (req, res) => {
   try {
-    const result = handleClientAction('RESERVE', req.body);
+    const clientIp = getClientIp(req);
+    const result = handleClientAction('RESERVE', { ...req.body, clientIp });
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
+app.put('/api/reserve/:slotId/:reservationId', (req, res) => {
+  try {
+    const clientIp = getClientIp(req);
+    const result = handleClientAction('UPDATE_RESERVATION', {
+      ...req.body,
+      slotId: req.params.slotId,
+      reservationId: req.params.reservationId,
+      clientIp
+    });
+    res.json(result);
+  } catch (err) {
+    const isForbidden = err.message.includes('Permission denied');
+    res.status(isForbidden ? 403 : 400).json({ error: err.message });
+  }
+});
+
+app.post('/api/reserve/update', (req, res) => {
+  try {
+    const clientIp = getClientIp(req);
+    const result = handleClientAction('UPDATE_RESERVATION', {
+      ...req.body,
+      clientIp
+    });
+    res.json(result);
+  } catch (err) {
+    const isForbidden = err.message.includes('Permission denied');
+    res.status(isForbidden ? 403 : 400).json({ error: err.message });
+  }
+});
+
 app.post('/api/check-conflicts', (req, res) => {
   try {
-    const { spaceId, tenantIds, startTime, durationMinutes } = req.body;
+    const { spaceId, tenantIds, startTime, durationMinutes, ignoreReservationId } = req.body;
     const space = appState.spaces.find(s => s.id === spaceId);
     if (!space) return res.status(400).json({ error: 'Space not found' });
 
@@ -817,7 +992,7 @@ app.post('/api/check-conflicts', (req, res) => {
     for (const tId of tenants) {
       const slot = appState.slots[`${space.id}:${tId}`];
       if (!slot) continue;
-      const c = checkSlotConflict(slot, start, end);
+      const c = checkSlotConflict(slot, start, end, ignoreReservationId);
       if (c) conflicts.push(c);
     }
 
@@ -833,13 +1008,16 @@ app.post('/api/check-conflicts', (req, res) => {
 
 app.delete('/api/reserve/:slotId/:reservationId', (req, res) => {
   try {
+    const clientIp = getClientIp(req);
     const result = handleClientAction('CANCEL_RESERVATION', {
       slotId: req.params.slotId,
-      reservationId: req.params.reservationId
+      reservationId: req.params.reservationId,
+      clientIp
     });
     res.json(result);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    const isForbidden = err.message.includes('Permission denied');
+    res.status(isForbidden ? 403 : 400).json({ error: err.message });
   }
 });
 
